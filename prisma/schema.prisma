@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/prisma"
@@ -12,4 +6,441 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model audit_log {
+  log_id     String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  table_name String       @db.VarChar(50)
+  record_id  String       @db.Uuid
+  action     audit_action
+  old_values Json?
+  new_values Json?
+  user_id    String?      @db.Uuid
+  timestamp  DateTime?    @default(now()) @db.Timestamptz(6)
+  users      users?       @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([table_name, record_id], map: "idx_audit_log_table_record")
+  @@index([timestamp], map: "idx_audit_log_timestamp")
+}
+
+model guests {
+  guest_id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  first_name         String               @db.VarChar(50)
+  last_name          String               @db.VarChar(50)
+  email              String?              @db.VarChar(100)
+  phone              String?              @db.VarChar(20)
+  date_of_birth      DateTime?            @db.Date
+  nationality        String?              @db.VarChar(50)
+  id_type            id_type?
+  id_number          String?              @db.VarChar(50)
+  address            String?
+  city               String?              @db.VarChar(50)
+  state_province     String?              @db.VarChar(50)
+  country            String?              @db.VarChar(50)
+  postal_code        String?              @db.VarChar(20)
+  preferences        Json?                @default("{}")
+  vip_status         vip_status?          @default(regular)
+  created_at         DateTime?            @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime?            @default(now()) @db.Timestamptz(6)
+  reservation_guests reservation_guests[]
+  reservations       reservations[]
+
+  @@index([email], map: "idx_guests_email")
+  @@index([phone], map: "idx_guests_phone")
+  @@index([preferences], map: "idx_guests_preferences", type: Gin)
+}
+
+model hotel_chains {
+  chain_id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  chain_name           String    @db.VarChar(100)
+  headquarters_address String?
+  phone                String?   @db.VarChar(20)
+  email                String?   @db.VarChar(100)
+  website              String?   @db.VarChar(100)
+  created_at           DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime? @default(now()) @db.Timestamptz(6)
+  hotels               hotels[]
+}
+
+model hotels {
+  hotel_id         String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  chain_id         String?            @db.Uuid
+  hotel_name       String             @db.VarChar(100)
+  hotel_code       String             @unique @db.VarChar(10)
+  address          String
+  city             String             @db.VarChar(50)
+  state_province   String?            @db.VarChar(50)
+  country          String             @db.VarChar(50)
+  postal_code      String?            @db.VarChar(20)
+  phone            String?            @db.VarChar(20)
+  email            String?            @db.VarChar(100)
+  website          String?            @db.VarChar(100)
+  star_rating      Decimal?           @db.Decimal(2, 1)
+  total_rooms      Int                @default(0)
+  check_in_time    DateTime?          @default(dbgenerated("'15:00:00'::time without time zone")) @db.Time(6)
+  check_out_time   DateTime?          @default(dbgenerated("'11:00:00'::time without time zone")) @db.Time(6)
+  timezone         String?            @default("UTC") @db.VarChar(50)
+  status           hotel_status?      @default(active)
+  created_at       DateTime?          @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime?          @default(now()) @db.Timestamptz(6)
+  hotel_chains     hotel_chains?      @relation(fields: [chain_id], references: [chain_id], onDelete: NoAction, onUpdate: NoAction)
+  inventory_blocks inventory_blocks[]
+  rate_adjustments rate_adjustments[]
+  rate_plans       rate_plans[]
+  reservations     reservations[]
+  room_types       room_types[]
+  rooms            rooms[]
+  users            users[]
+
+  @@index([chain_id], map: "idx_hotels_chain_id")
+  @@index([status], map: "idx_hotels_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model inventory_blocks {
+  block_id     String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hotel_id     String      @db.Uuid
+  room_id      String?     @db.Uuid
+  room_type_id String?     @db.Uuid
+  block_type   block_type
+  start_date   DateTime    @db.Date
+  end_date     DateTime    @db.Date
+  reason       String?
+  created_by   String?     @db.VarChar(50)
+  created_at   DateTime?   @default(now()) @db.Timestamptz(6)
+  hotels       hotels      @relation(fields: [hotel_id], references: [hotel_id], onDelete: NoAction, onUpdate: NoAction)
+  rooms        rooms?      @relation(fields: [room_id], references: [room_id], onDelete: NoAction, onUpdate: NoAction)
+  room_types   room_types? @relation(fields: [room_type_id], references: [room_type_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([start_date, end_date], map: "idx_inventory_blocks_dates")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model payment_methods {
+  payment_method_id String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id    String              @db.Uuid
+  method_type       payment_method_type
+  card_type         card_type?
+  card_last_four    String?             @db.VarChar(4)
+  cardholder_name   String?             @db.VarChar(100)
+  expiry_month      Int?
+  expiry_year       Int?
+  billing_address   String?
+  is_primary        Boolean?            @default(false)
+  created_at        DateTime?           @default(now()) @db.Timestamptz(6)
+  reservations      reservations        @relation(fields: [reservation_id], references: [reservation_id], onDelete: NoAction, onUpdate: NoAction)
+  payments          payments[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model payments {
+  payment_id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id    String           @db.Uuid
+  payment_method_id String?          @db.Uuid
+  amount            Decimal          @db.Decimal(10, 2)
+  currency          String?          @default("USD") @db.VarChar(3)
+  payment_type      payment_type
+  transaction_id    String?          @db.VarChar(100)
+  gateway_response  Json?
+  status            payment_status?  @default(pending)
+  processed_at      DateTime?        @db.Timestamptz(6)
+  created_at        DateTime?        @default(now()) @db.Timestamptz(6)
+  payment_methods   payment_methods? @relation(fields: [payment_method_id], references: [payment_method_id], onDelete: NoAction, onUpdate: NoAction)
+  reservations      reservations     @relation(fields: [reservation_id], references: [reservation_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([gateway_response], map: "idx_payments_gateway_response", type: Gin)
+  @@index([reservation_id], map: "idx_payments_reservation")
+  @@index([status], map: "idx_payments_status")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model rate_adjustments {
+  adjustment_id    String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hotel_id         String          @db.Uuid
+  room_type_id     String?         @db.Uuid
+  rate_plan_id     String?         @db.Uuid
+  adjustment_type  adjustment_type
+  adjustment_value Decimal         @db.Decimal(10, 2)
+  is_percentage    Boolean?        @default(false)
+  start_date       DateTime        @db.Date
+  end_date         DateTime        @db.Date
+  days_of_week     Int[]           @default([1, 2, 3, 4, 5, 6, 7])
+  is_active        Boolean?        @default(true)
+  created_at       DateTime?       @default(now()) @db.Timestamptz(6)
+  hotels           hotels          @relation(fields: [hotel_id], references: [hotel_id], onDelete: NoAction, onUpdate: NoAction)
+  rate_plans       rate_plans?     @relation(fields: [rate_plan_id], references: [rate_plan_id], onDelete: NoAction, onUpdate: NoAction)
+  room_types       room_types?     @relation(fields: [room_type_id], references: [room_type_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([hotel_id, start_date, end_date], map: "idx_rate_adjustments_hotel_dates")
+}
+
+model rate_plans {
+  rate_plan_id         String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hotel_id             String             @db.Uuid
+  room_type_id         String             @db.Uuid
+  plan_name            String             @db.VarChar(100)
+  plan_code            String             @db.VarChar(20)
+  base_rate            Decimal            @db.Decimal(10, 2)
+  currency             String?            @default("USD") @db.VarChar(3)
+  includes_breakfast   Boolean?           @default(false)
+  includes_wifi        Boolean?           @default(true)
+  cancellation_policy  String?
+  advance_booking_days Int?               @default(0)
+  min_stay_nights      Int?               @default(1)
+  max_stay_nights      Int?               @default(30)
+  valid_from           DateTime           @db.Date
+  valid_to             DateTime           @db.Date
+  is_active            Boolean?           @default(true)
+  created_at           DateTime?          @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime?          @default(now()) @db.Timestamptz(6)
+  rate_adjustments     rate_adjustments[]
+  hotels               hotels             @relation(fields: [hotel_id], references: [hotel_id], onDelete: NoAction, onUpdate: NoAction)
+  room_types           room_types         @relation(fields: [room_type_id], references: [room_type_id], onDelete: NoAction, onUpdate: NoAction)
+  reservations         reservations[]
+
+  @@unique([hotel_id, plan_code], map: "unique_hotel_plan_code")
+  @@index([hotel_id, valid_from, valid_to], map: "idx_rate_plans_hotel_dates")
+}
+
+model reservation_guests {
+  reservation_guest_id String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id       String       @db.Uuid
+  guest_id             String       @db.Uuid
+  is_primary           Boolean?     @default(false)
+  created_at           DateTime?    @default(now()) @db.Timestamptz(6)
+  guests               guests       @relation(fields: [guest_id], references: [guest_id], onDelete: NoAction, onUpdate: NoAction)
+  reservations         reservations @relation(fields: [reservation_id], references: [reservation_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([reservation_id, guest_id], map: "unique_reservation_guest")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model reservations {
+  reservation_id      String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hotel_id            String               @db.Uuid
+  guest_id            String               @db.Uuid
+  room_type_id        String               @db.Uuid
+  rate_plan_id        String?              @db.Uuid
+  confirmation_number String               @unique @db.VarChar(20)
+  check_in_date       DateTime             @db.Date
+  check_out_date      DateTime             @db.Date
+  nights              Int?                 @default(dbgenerated("(check_out_date - check_in_date)"))
+  adults              Int                  @default(1)
+  children            Int?                 @default(0)
+  total_guests        Int?                 @default(dbgenerated("(adults + children)"))
+  room_rate           Decimal              @db.Decimal(10, 2)
+  total_amount        Decimal              @db.Decimal(10, 2)
+  currency            String?              @default("USD") @db.VarChar(3)
+  status              reservation_status?  @default(confirmed)
+  booking_source      booking_source?      @default(direct)
+  special_requests    String?
+  notes               String?
+  created_by          String?              @db.VarChar(50)
+  created_at          DateTime?            @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime?            @default(now()) @db.Timestamptz(6)
+  payment_methods     payment_methods[]
+  payments            payments[]
+  reservation_guests  reservation_guests[]
+  guests              guests               @relation(fields: [guest_id], references: [guest_id], onDelete: NoAction, onUpdate: NoAction)
+  hotels              hotels               @relation(fields: [hotel_id], references: [hotel_id], onDelete: NoAction, onUpdate: NoAction)
+  rate_plans          rate_plans?          @relation(fields: [rate_plan_id], references: [rate_plan_id], onDelete: NoAction, onUpdate: NoAction)
+  room_types          room_types           @relation(fields: [room_type_id], references: [room_type_id], onDelete: NoAction, onUpdate: NoAction)
+  room_assignments    room_assignments[]
+
+  @@index([confirmation_number], map: "idx_reservations_confirmation")
+  @@index([guest_id], map: "idx_reservations_guest")
+  @@index([hotel_id, check_in_date, check_out_date], map: "idx_reservations_hotel_dates")
+  @@index([status], map: "idx_reservations_status")
+}
+
+model room_assignments {
+  assignment_id  String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reservation_id String             @db.Uuid
+  room_id        String             @db.Uuid
+  assigned_date  DateTime           @db.Date
+  check_in_time  DateTime?          @db.Timestamptz(6)
+  check_out_time DateTime?          @db.Timestamptz(6)
+  status         assignment_status? @default(assigned)
+  created_at     DateTime?          @default(now()) @db.Timestamptz(6)
+  updated_at     DateTime?          @default(now()) @db.Timestamptz(6)
+  reservations   reservations       @relation(fields: [reservation_id], references: [reservation_id], onDelete: NoAction, onUpdate: NoAction)
+  rooms          rooms              @relation(fields: [room_id], references: [room_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([reservation_id, room_id], map: "unique_room_assignment")
+  @@index([reservation_id], map: "idx_room_assignments_reservation")
+  @@index([room_id, assigned_date], map: "idx_room_assignments_room_date")
+}
+
+model room_types {
+  room_type_id     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hotel_id         String             @db.Uuid
+  type_name        String             @db.VarChar(50)
+  type_code        String             @db.VarChar(10)
+  description      String?
+  max_occupancy    Int
+  base_price       Decimal            @db.Decimal(10, 2)
+  area_sqm         Decimal?           @db.Decimal(6, 2)
+  amenities        Json?              @default("{}")
+  created_at       DateTime?          @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime?          @default(now()) @db.Timestamptz(6)
+  inventory_blocks inventory_blocks[]
+  rate_adjustments rate_adjustments[]
+  rate_plans       rate_plans[]
+  reservations     reservations[]
+  hotels           hotels             @relation(fields: [hotel_id], references: [hotel_id], onDelete: NoAction, onUpdate: NoAction)
+  rooms            rooms[]
+
+  @@unique([hotel_id, type_code], map: "unique_hotel_type_code")
+  @@index([amenities], map: "idx_room_types_amenities", type: Gin)
+}
+
+model rooms {
+  room_id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hotel_id         String             @db.Uuid
+  room_type_id     String             @db.Uuid
+  room_number      String             @db.VarChar(10)
+  floor_number     Int?
+  status           room_status?       @default(available)
+  features         Json?              @default("{}")
+  created_at       DateTime?          @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime?          @default(now()) @db.Timestamptz(6)
+  inventory_blocks inventory_blocks[]
+  room_assignments room_assignments[]
+  hotels           hotels             @relation(fields: [hotel_id], references: [hotel_id], onDelete: NoAction, onUpdate: NoAction)
+  room_types       room_types         @relation(fields: [room_type_id], references: [room_type_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([hotel_id, room_number], map: "unique_hotel_room")
+  @@index([features], map: "idx_rooms_features", type: Gin)
+  @@index([hotel_id, room_type_id], map: "idx_rooms_hotel_type")
+  @@index([status], map: "idx_rooms_status")
+}
+
+model users {
+  user_id       String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username      String      @unique @db.VarChar(50)
+  email         String      @unique @db.VarChar(100)
+  password_hash String      @db.VarChar(255)
+  first_name    String      @db.VarChar(50)
+  last_name     String      @db.VarChar(50)
+  role          user_role
+  hotel_id      String?     @db.Uuid
+  is_active     Boolean?    @default(true)
+  last_login    DateTime?   @db.Timestamptz(6)
+  created_at    DateTime?   @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime?   @default(now()) @db.Timestamptz(6)
+  audit_log     audit_log[]
+  hotels        hotels?     @relation(fields: [hotel_id], references: [hotel_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+enum adjustment_type {
+  seasonal
+  weekend
+  holiday
+  discount
+  surcharge
+}
+
+enum assignment_status {
+  assigned
+  checked_in
+  checked_out
+}
+
+enum audit_action {
+  INSERT
+  UPDATE
+  DELETE
+}
+
+enum block_type {
+  maintenance
+  event
+  group_booking
+  owner_use
+  other
+}
+
+enum booking_source {
+  direct
+  online
+  phone
+  email
+  walk_in
+  travel_agent
+  ota
+}
+
+enum card_type {
+  visa
+  mastercard
+  amex
+  discover
+  other
+}
+
+enum hotel_status {
+  active
+  inactive
+  maintenance
+}
+
+enum id_type {
+  passport
+  driver_license
+  national_id
+  other
+}
+
+enum payment_method_type {
+  credit_card
+  debit_card
+  cash
+  bank_transfer
+  check
+  voucher
+}
+
+enum payment_status {
+  pending
+  completed
+  failed
+  refunded
+}
+
+enum payment_type {
+  deposit
+  full_payment
+  partial_payment
+  refund
+}
+
+enum reservation_status {
+  confirmed
+  checked_in
+  checked_out
+  cancelled
+  no_show
+}
+
+enum room_status {
+  available
+  occupied
+  maintenance
+  out_of_order
+}
+
+enum user_role {
+  admin
+  manager
+  front_desk
+  housekeeping
+  maintenance
+  guest_services
+}
+
+enum vip_status {
+  regular
+  silver
+  gold
+  platinum
 }
